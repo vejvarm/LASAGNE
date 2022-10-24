@@ -6,6 +6,8 @@ from model import LASAGNE
 from dataset import CSQADataset
 from utils import Predictor, Inference
 
+import threading
+
 # import constants
 from constants import *
 
@@ -27,6 +29,7 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
 
+
 def main():
     # load data
     dataset = CSQADataset()
@@ -34,7 +37,6 @@ def main():
     inference_data = dataset.get_inference_data(args.inference_partition)
 
     logger.info(f'Inference partition: {args.inference_partition}')
-    logger.info(f'Inference question type: {args.question_type}')
     logger.info('Inference data prepared')
     logger.info(f"Num of inference data: {len(inference_data)}")
 
@@ -52,7 +54,19 @@ def main():
 
     # construct actions
     predictor = Predictor(model, vocabs, DEVICE)
-    Inference().construct_actions(inference_data, predictor)
+    inference = Inference()
+    threads = []
+    for i, question_type in enumerate(args.question_types_to_run):
+        logger.info(f'Inference question type: {question_type}')
+        threads.append(threading.Thread(target=inference.construct_actions, args=(inference_data, predictor, question_type)))
+    # Inference().construct_actions(inference_data, predictor, args.question_type)
+
+    for t in threads:
+        t.start()
+
+    for t in threads:
+        t.join()
+
 
 if __name__ == '__main__':
     main()

@@ -60,6 +60,8 @@ def main():
         MULTITASK: MultiTaskLoss
     }[args.task](ignore_index=vocabs[LOGICAL_FORM].stoi[PAD_TOKEN])
 
+    single_task_loss = SingleTaskLoss(ignore_index=vocabs[LOGICAL_FORM].stoi[PAD_TOKEN])
+
     # define optimizer
     optimizer = NoamOpt(torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
 
@@ -105,7 +107,7 @@ def main():
 
         # evaluate on validation set
         if (epoch+1) % args.valfreq == 0:
-            val_loss = validate(val_loader, model, vocabs, criterion)
+            val_loss = validate(val_loader, model, vocabs, criterion, single_task_loss)
             # if val_loss < best_val:
             best_val = min(val_loss, best_val) # log every validation step
             save_checkpoint({
@@ -116,6 +118,7 @@ def main():
                 CURR_VAL: val_loss})
             logger.info(f'* Val loss: {val_loss:.4f}')
 
+
 def train(train_loader, model, vocabs, criterion, optimizer, epoch):
     batch_time = AverageMeter()
     losses = AverageMeter()
@@ -124,6 +127,7 @@ def train(train_loader, model, vocabs, criterion, optimizer, epoch):
     model.train()
 
     end = time.time()
+    batch_progress_old = -1
     for i, batch in enumerate(train_loader):
         # get inputs
         input = batch.input
@@ -159,10 +163,21 @@ def train(train_loader, model, vocabs, criterion, optimizer, epoch):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        logger.info(f'Epoch: {epoch+1} - Train loss: {losses.val:.4f} ({losses.avg:.4f}) - Batch: {((i+1)/len(train_loader))*100:.2f}% - Time: {batch_time.sum:0.2f}s')
+        batch_progress = int(((i + 1) / len(train_loader)) * 100)  # percentage
 
-def validate(val_loader, model, vocabs, criterion):
+        if batch_progress > batch_progress_old:
+            logger.info(f'Epoch: {epoch+1} - Train loss: {losses.val:.4f} ({losses.avg:.4f}) - Batch: {batch_progress:02d}% - Time: {batch_time.sum:0.2f}s')
+        batch_progress_old = batch_progress
+
+
+def validate(val_loader, model, vocabs, criterion, single_task_loss):
     losses = AverageMeter()
+
+    # record individual losses
+    losses_lf = AverageMeter()
+    losses_ner = AverageMeter()
+    losses_coref = AverageMeter()
+    losses_graph = AverageMeter()
 
     # switch to evaluate mode
     model.eval()
@@ -190,8 +205,23 @@ def validate(val_loader, model, vocabs, criterion):
             # compute loss
             loss = criterion(output, target) if args.task == MULTITASK else criterion(output[args.task], target[args.task])
 
+            # compute individual losses
+            loss_lf = single_task_loss(output[LOGICAL_FORM], target[LOGICAL_FORM])
+            loss_ner = single_task_loss(output[NER], target[NER])
+            loss_coref = single_task_loss(output[COREF], target[COREF])
+            loss_graph = single_task_loss(output[GRAPH], target[GRAPH])
+
             # record loss
-            losses.update(loss.data, input.size(0))
+            losses.update(loss.detach(), input.size(0))
+
+            # record individual losses
+            losses_lf.update(loss_lf.detach(), input.size(0))
+            losses_ner.update(loss_ner.detach(), input.size(0))
+            losses_coref.update(loss_coref.detach(), input.size(0))
+            losses_graph.update(loss_graph.detach(), input.size(0))
+
+        logger.info(f"Val losses:: LF: {losses_lf.avg} | NER: {losses_ner.avg} | COREF: {losses_coref.avg} | "
+                    f"GRAPH: {losses_graph.avg}")
 
     return losses.avg
 

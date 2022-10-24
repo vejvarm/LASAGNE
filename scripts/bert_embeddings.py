@@ -1,3 +1,6 @@
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import re
 import json
 import torch
@@ -10,8 +13,8 @@ from flair.embeddings import FlairEmbeddings, BertEmbeddings, DocumentPoolEmbedd
 from constants import *
 
 # set device
-torch.cuda.set_device(1)
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+torch.cuda.set_device(0)
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 flair.device = DEVICE
 
 # load bert model

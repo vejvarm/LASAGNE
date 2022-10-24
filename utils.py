@@ -20,6 +20,7 @@ from constants import *
 
 # set logger
 logging.getLogger('elasticsearch').setLevel(logging.CRITICAL)
+logging.getLogger('elastic_transport.transport').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 class NoamOpt:
@@ -230,13 +231,17 @@ class Scorer(object):
 class Inference(object):
     def __init__(self):
         self.tokenizer = BertTokenizer.from_pretrained(BERT_BASE_UNCASED)
-        self.es = Elasticsearch([{'host': 'localhost', 'port': 9200}]) # connect to elastic search server
+        self.es = Elasticsearch(args.elastic_host,
+                                ca_certs=args.elastic_certs,
+                                basic_auth=(args.elastic_user, args.elastic_password),
+                                retry_on_timeout=True
+                                )  # connect to elastic search server
         self.inference_actions = []
 
-    def construct_actions(self, inference_data, predictor):
+    def construct_actions(self, inference_data, predictor, question_type):
         tic = time.perf_counter()
         # based on model outpus create a final logical form to execute
-        question_type_inference_data = [data for data in inference_data if args.question_type in data[QUESTION_TYPE]]
+        question_type_inference_data = [data for data in inference_data if question_type in data[QUESTION_TYPE]]
         for i, sample in enumerate(question_type_inference_data):
             predictions = predictor.predict(sample['context_question'])
             actions = []
@@ -256,7 +261,7 @@ class Inference(object):
                     # create a ner dictionary with index as key and entity as value
                     ner_idx_ent = self.create_ner_idx_ent_dict(ner_indices, context_question)
                     if str(ent_count_pos) not in list(coref_indices.values()):
-                        if args.question_type in [CLARIFICATION, QUANTITATIVE_COUNT] and len(list(coref_indices.values())) == ent_count_pos: # simple constraint for clarification and quantitative count
+                        if question_type in [CLARIFICATION, QUANTITATIVE_COUNT] and len(list(coref_indices.values())) == ent_count_pos: # simple constraint for clarification and quantitative count
                             for l, (cidx, ctag) in enumerate(coref_indices.items()):
                                 if ctag == str(ent_count_pos-1):
                                     if cidx in ner_idx_ent:
@@ -271,7 +276,7 @@ class Inference(object):
                             except:
                                 print('No coref indices!')
                                 actions.append([ENTITY, ENTITY])
-                        elif args.question_type in [VERIFICATION, SIMPLE_DIRECT, CLARIFICATION] and ent_count_pos == 0 and not coref_indices: # simple constraint for verification and simple question (direct)
+                        elif question_type in [VERIFICATION, SIMPLE_DIRECT, CLARIFICATION] and ent_count_pos == 0 and not coref_indices: # simple constraint for verification and simple question (direct)
                             try:
                                 actions.append([ENTITY, ner_idx_ent.popitem()[1][0]])
                             except:
@@ -329,7 +334,7 @@ class Inference(object):
                 toc = time.perf_counter()
                 print(f'==> Finished action construction {((i+1)/len(question_type_inference_data))*100:.2f}% -- {toc - tic:0.2f}s')
 
-        self.write_inference_actions()
+        self.write_inference_actions(question_type)
 
     def create_ner_idx_ent_dict(self, ner_indices, context_question):
         ent_idx = []
@@ -364,7 +369,15 @@ class Inference(object):
         return ner_idx_ent
 
     def elasticsearch_query(self, query, filter_type, res_size=50):
-        res = self.es.search(index='csqa_wikidata', doc_type='entities', body={'size': res_size, 'query': {'match': {'label': {'query': unidecode(query), 'fuzziness': 'AUTO'}}}})
+        res = self.es.search(index='csqa_wikidata', size=res_size,
+                             query={
+                                'match': {
+                                    'label': {
+                                        'query': unidecode(query),
+                                        'fuzziness': 'AUTO',
+                                    }
+                                }
+                            })
         results = []
         for hit in res['hits']['hits']: results.append([hit['_source']['id'], hit['_source']['type']])
         filtered_results = [res for res in results if filter_type in res[1]]
@@ -391,8 +404,8 @@ class Inference(object):
 
         return value
 
-    def write_inference_actions(self):
-        with open(f'{ROOT_PATH}/{args.path_inference}/{args.model_path.rsplit("/", 1)[-1].rsplit(".", 2)[0]}_{args.inference_partition}_{args.question_type}.json', 'w', encoding='utf-8') as json_file:
+    def write_inference_actions(self, question_type):
+        with open(f'{ROOT_PATH}/{args.path_inference}/{args.model_path.rsplit("/", 1)[-1].rsplit(".", 2)[0]}_{args.inference_partition}_{question_type}.json', 'w', encoding='utf-8') as json_file:
             json_file.write(json.dumps(self.inference_actions, indent=4))
 
 def save_checkpoint(state):

@@ -1,5 +1,17 @@
 import argparse
 
+question_types = ['Clarification',
+                  'Comparative Reasoning (All)',
+                  'Logical Reasoning (All)',
+                  'Quantitative Reasoning (All)',
+                  'Simple Question (Coreferenced)',
+                  'Simple Question (Direct)',
+                  'Simple Question (Ellipsis)',
+                  'Verification (Boolean) (All)',
+                  'Quantitative Reasoning (Count) (All)',
+                  'Comparative Reasoning (Count) (All)']
+
+
 def get_parser():
     parser = argparse.ArgumentParser(description='LASAGNE')
 
@@ -52,28 +64,9 @@ def get_parser():
     parser.add_argument('--model_path', default='experiments/models/LASAGNE_e19_v0.0167_multitask.pth.tar', type=str)
     parser.add_argument('--file_path', default='/experiments/inference/LASAGNE_e19_v0.0167_multitask_test_Clarification.json', type=str)
     parser.add_argument('--inference_partition', default='test', choices=['val', 'test'], type=str)
-    parser.add_argument('--question_type', default='Clarification',
-        choices=['Clarification',
-                'Comparative Reasoning (All)',
-                'Logical Reasoning (All)',
-                'Quantitative Reasoning (All)',
-                'Simple Question (Coreferenced)',
-                'Simple Question (Direct)',
-                'Simple Question (Ellipsis)',
-                'Verification (Boolean) (All)',
-                'Quantitative Reasoning (Count) (All)',
-                'Comparative Reasoning (Count) (All)'], type=str)
+    parser.add_argument('--question_type', default='Clarification', choices=question_types, type=str)
     # parser.add_argument('--question_types_to_run', default=['Clarification']*10)  # ANCHOR: For testing purposes
-    parser.add_argument('--question_types_to_run', default=['Clarification',
-                                                            'Comparative Reasoning (All)',
-                                                            'Logical Reasoning (All)',
-                                                            'Quantitative Reasoning (All)',
-                                                            'Simple Question (Coreferenced)',
-                                                            'Simple Question (Direct)',
-                                                            'Simple Question (Ellipsis)',
-                                                            'Verification (Boolean) (All)',
-                                                            'Quantitative Reasoning (Count) (All)',
-                                                            'Comparative Reasoning (Count) (All)'])
+    parser.add_argument('--question_types_to_run', default=question_types)
 
     # elasticsearch related
     parser.add_argument('--elastic_host', default='https://localhost:9200')
